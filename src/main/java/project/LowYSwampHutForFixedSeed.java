@@ -34,6 +34,7 @@ public class LowYSwampHutForFixedSeed extends JFrame {
     private JLabel searchThreadCountLabel;
     private JLabel searchHeightLabel;
     private JLabel searchVersionLabel;
+    private JLabel searchWorldPresetLabel;
     private JLabel searchMinXLabel;
     private JLabel searchMaxXLabel;
     private JLabel searchMinZLabel;
@@ -44,6 +45,7 @@ public class LowYSwampHutForFixedSeed extends JFrame {
     private JTextField searchThreadCountField;
     private JComboBox<String> maxHeightComboBox;
     private JComboBox<String> versionComboBox;
+    private JComboBox<String> worldPresetComboBox;
     private JTextField minXField;
     private JTextField maxXField;
     private JTextField minZField;
@@ -82,6 +84,7 @@ public class LowYSwampHutForFixedSeed extends JFrame {
     private JLabel listSearchThreadCountLabel;
     private JLabel listSearchHeightLabel;
     private JLabel listSearchVersionLabel;
+    private JLabel listSearchWorldPresetLabel;
     private JLabel listSearchMinXLabel;
     private JLabel listSearchMaxXLabel;
     private JLabel listSearchMinZLabel;
@@ -91,6 +94,7 @@ public class LowYSwampHutForFixedSeed extends JFrame {
     private JTextField listSearchThreadCountField;
     private JComboBox<String> listMaxHeightComboBox;
     private JComboBox<String> listVersionComboBox;
+    private JComboBox<String> listWorldPresetComboBox;
     private JTextField listMinXField;
     private JTextField listMaxXField;
     private JTextField listMinZField;
@@ -275,9 +279,24 @@ public class LowYSwampHutForFixedSeed extends JFrame {
         versionComboBox.setSelectedIndex(0); // 默认选择 1.21.1
         inputPanel.add(versionComboBox, gbc);
 
-        // MinX 输入
+        // 世界类型选择下拉框
         gbc.gridx = 0;
         gbc.gridy = 4;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.weightx = 0;
+        searchWorldPresetLabel = new JLabel(getString("label.worldPreset"));
+        searchWorldPresetLabel.setFont(getLoadedFont());
+        inputPanel.add(searchWorldPresetLabel, gbc);
+        gbc.gridx = 1;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.weightx = 1.0;
+        worldPresetComboBox = new JComboBox<>(getWorldPresetOptions());
+        worldPresetComboBox.setSelectedIndex(0);
+        inputPanel.add(worldPresetComboBox, gbc);
+
+        // MinX 输入
+        gbc.gridx = 0;
+        gbc.gridy = 5;
         gbc.fill = GridBagConstraints.NONE;
         gbc.weightx = 0;
         JLabel minXLabel = new JLabel("MinX(x512):");
@@ -297,7 +316,7 @@ public class LowYSwampHutForFixedSeed extends JFrame {
 
         // MaxX 输入
         gbc.gridx = 0;
-        gbc.gridy = 5;
+        gbc.gridy = 6;
         gbc.fill = GridBagConstraints.NONE;
         gbc.weightx = 0;
         JLabel maxXLabel = new JLabel("MaxX(x512):");
@@ -316,7 +335,7 @@ public class LowYSwampHutForFixedSeed extends JFrame {
 
         // MinZ 输入
         gbc.gridx = 0;
-        gbc.gridy = 6;
+        gbc.gridy = 7;
         gbc.fill = GridBagConstraints.NONE;
         gbc.weightx = 0;
         JLabel minZLabel = new JLabel("MinZ(x512):");
@@ -335,7 +354,7 @@ public class LowYSwampHutForFixedSeed extends JFrame {
 
         // MaxZ 输入
         gbc.gridx = 0;
-        gbc.gridy = 7;
+        gbc.gridy = 8;
         gbc.fill = GridBagConstraints.NONE;
         gbc.weightx = 0;
         JLabel maxZLabel = new JLabel("MaxZ(x512):");
@@ -354,7 +373,7 @@ public class LowYSwampHutForFixedSeed extends JFrame {
 
         // 精确检查生成情况复选框
         gbc.gridx = 0;
-        gbc.gridy = 8;
+        gbc.gridy = 9;
         gbc.fill = GridBagConstraints.NONE;
         gbc.weightx = 0;
         searchCheckGenerationLabel = new JLabel(getString("label.checkGeneration"));
@@ -370,7 +389,7 @@ public class LowYSwampHutForFixedSeed extends JFrame {
 
         // 语言选择下拉框
         gbc.gridx = 0;
-        gbc.gridy = 9;
+        gbc.gridy = 10;
         gbc.fill = GridBagConstraints.NONE;
         gbc.weightx = 0;
         searchLanguageLabel = new JLabel(getString("label.language"));
@@ -607,6 +626,7 @@ public class LowYSwampHutForFixedSeed extends JFrame {
                 searchThreadCountField.setEnabled(true);
                 maxHeightComboBox.setEnabled(true);
                 versionComboBox.setEnabled(true);
+                worldPresetComboBox.setEnabled(true);
                 minXField.setEnabled(true);
                 maxXField.setEnabled(true);
                 minZField.setEnabled(true);
@@ -751,10 +771,11 @@ public class LowYSwampHutForFixedSeed extends JFrame {
                     double maxHeight = Double.parseDouble(selectedHeight);
                     String selectedVersion = (String) versionComboBox.getSelectedItem();
                     MCVersion mcVersion = getMCVersion(selectedVersion != null ? selectedVersion : "1.21.1");
+                    WorldPresetMode worldPresetMode = getWorldPresetMode((String) worldPresetComboBox.getSelectedItem());
 
                     // 如果版本变化，需要重新创建searcher
-                    if (searcher == null || !searcher.getMCVersion().equals(mcVersion)) {
-                        searcher = new SearchCoords(mcVersion);
+                    if (searcher == null || !searcher.getMCVersion().equals(mcVersion) || searcher.getWorldPresetMode() != worldPresetMode) {
+                        searcher = new SearchCoords(mcVersion, worldPresetMode);
                     }
 
                     // 调用startSearch，它会检测到暂停状态并调整线程数
@@ -973,6 +994,7 @@ public class LowYSwampHutForFixedSeed extends JFrame {
             searchThreadCountField.setEnabled(false); // 运行中不能修改，暂停时可以修改
             maxHeightComboBox.setEnabled(false);
             versionComboBox.setEnabled(false);
+            worldPresetComboBox.setEnabled(false);
             minXField.setEnabled(false);
             maxXField.setEnabled(false);
             minZField.setEnabled(false);
@@ -990,8 +1012,9 @@ public class LowYSwampHutForFixedSeed extends JFrame {
             // 获取选择的版本
             String selectedVersion = (String) versionComboBox.getSelectedItem();
             MCVersion mcVersion = getMCVersion(selectedVersion != null ? selectedVersion : "1.21.1");
+            WorldPresetMode worldPresetMode = getWorldPresetMode((String) worldPresetComboBox.getSelectedItem());
 
-            searcher = new SearchCoords(mcVersion);
+            searcher = new SearchCoords(mcVersion, worldPresetMode);
             boolean checkGeneration = searchCheckGenerationCheckBox.isSelected();
             searcher.startSearch(seed, threadCount, minX, maxX, minZ, maxZ, maxHeight, this::updateSearchProgress, this::addSearchResult, checkGeneration);
 
@@ -1035,6 +1058,7 @@ public class LowYSwampHutForFixedSeed extends JFrame {
         searchThreadCountField.setEnabled(true);
         maxHeightComboBox.setEnabled(true);
         versionComboBox.setEnabled(true);
+        worldPresetComboBox.setEnabled(true);
         minXField.setEnabled(true);
         maxXField.setEnabled(true);
         minZField.setEnabled(true);
@@ -1136,9 +1160,24 @@ public class LowYSwampHutForFixedSeed extends JFrame {
         listVersionComboBox.setSelectedIndex(0); // 默认选择 1.21.1
         inputPanel.add(listVersionComboBox, gbc);
 
-        // MinX 输入
+        // 世界类型选择下拉框
         gbc.gridx = 0;
         gbc.gridy = 4;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.weightx = 0;
+        listSearchWorldPresetLabel = new JLabel(getString("label.worldPreset"));
+        listSearchWorldPresetLabel.setFont(getLoadedFont());
+        inputPanel.add(listSearchWorldPresetLabel, gbc);
+        gbc.gridx = 1;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.weightx = 1.0;
+        listWorldPresetComboBox = new JComboBox<>(getWorldPresetOptions());
+        listWorldPresetComboBox.setSelectedIndex(0);
+        inputPanel.add(listWorldPresetComboBox, gbc);
+
+        // MinX 输入
+        gbc.gridx = 0;
+        gbc.gridy = 5;
         gbc.fill = GridBagConstraints.NONE;
         gbc.weightx = 0;
         listSearchMinXLabel = new JLabel(getString("label.minX"));
@@ -1157,7 +1196,7 @@ public class LowYSwampHutForFixedSeed extends JFrame {
 
         // MaxX 输入
         gbc.gridx = 0;
-        gbc.gridy = 5;
+        gbc.gridy = 6;
         gbc.fill = GridBagConstraints.NONE;
         gbc.weightx = 0;
         listSearchMaxXLabel = new JLabel(getString("label.maxX"));
@@ -1176,7 +1215,7 @@ public class LowYSwampHutForFixedSeed extends JFrame {
 
         // MinZ 输入
         gbc.gridx = 0;
-        gbc.gridy = 6;
+        gbc.gridy = 7;
         gbc.fill = GridBagConstraints.NONE;
         gbc.weightx = 0;
         listSearchMinZLabel = new JLabel(getString("label.minZ"));
@@ -1195,7 +1234,7 @@ public class LowYSwampHutForFixedSeed extends JFrame {
 
         // MaxZ 输入
         gbc.gridx = 0;
-        gbc.gridy = 7;
+        gbc.gridy = 8;
         gbc.fill = GridBagConstraints.NONE;
         gbc.weightx = 0;
         listSearchMaxZLabel = new JLabel(getString("label.maxZ"));
@@ -1214,7 +1253,7 @@ public class LowYSwampHutForFixedSeed extends JFrame {
 
         // 精确检查生成情况复选框
         gbc.gridx = 0;
-        gbc.gridy = 8;
+        gbc.gridy = 9;
         gbc.fill = GridBagConstraints.NONE;
         gbc.weightx = 0;
         listSearchCheckGenerationLabel = new JLabel(getString("label.checkGeneration"));
@@ -1370,6 +1409,7 @@ public class LowYSwampHutForFixedSeed extends JFrame {
                 searchThreadCountField.setEnabled(true);
                 maxHeightComboBox.setEnabled(true);
                 versionComboBox.setEnabled(true);
+                worldPresetComboBox.setEnabled(true);
                 minXField.setEnabled(true);
                 maxXField.setEnabled(true);
                 minZField.setEnabled(true);
@@ -1524,6 +1564,17 @@ public class LowYSwampHutForFixedSeed extends JFrame {
         };
     }
 
+    private String[] getWorldPresetOptions() {
+        return new String[]{getString("worldPreset.normal"), getString("worldPreset.largeBiomes")};
+    }
+
+    private WorldPresetMode getWorldPresetMode(String presetLabel) {
+        if (presetLabel != null && presetLabel.equals(getString("worldPreset.largeBiomes"))) {
+            return WorldPresetMode.LARGE_BIOMES;
+        }
+        return WorldPresetMode.NORMAL;
+    }
+
     /**
      * 切换语言
      */
@@ -1618,6 +1669,9 @@ public class LowYSwampHutForFixedSeed extends JFrame {
         if (searchVersionLabel != null) {
             searchVersionLabel.setText(getString("label.version"));
         }
+        if (searchWorldPresetLabel != null) {
+            searchWorldPresetLabel.setText(getString("label.worldPreset"));
+        }
         if (searchMinXLabel != null) {
             searchMinXLabel.setText(getString("label.minX"));
         }
@@ -1666,6 +1720,11 @@ public class LowYSwampHutForFixedSeed extends JFrame {
         if (searchSortButton != null) {
             searchSortButton.setText(getString("button.sort"));
         }
+        if (worldPresetComboBox != null) {
+            int selectedIndex = worldPresetComboBox.getSelectedIndex();
+            worldPresetComboBox.setModel(new DefaultComboBoxModel<>(getWorldPresetOptions()));
+            worldPresetComboBox.setSelectedIndex(Math.max(0, selectedIndex));
+        }
 
         // 更新进度条和标签
         if (searchProgressBar != null && !isSearchRunning) {
@@ -1695,6 +1754,9 @@ public class LowYSwampHutForFixedSeed extends JFrame {
         }
         if (listSearchVersionLabel != null) {
             listSearchVersionLabel.setText(getString("label.version"));
+        }
+        if (listSearchWorldPresetLabel != null) {
+            listSearchWorldPresetLabel.setText(getString("label.worldPreset"));
         }
         if (listSearchMinXLabel != null) {
             listSearchMinXLabel.setText(getString("label.minX"));
@@ -1736,6 +1798,11 @@ public class LowYSwampHutForFixedSeed extends JFrame {
         }
         if (listSortByDistanceButton != null) {
             listSortByDistanceButton.setText(getString("button.sortByDistance"));
+        }
+        if (listWorldPresetComboBox != null) {
+            int selectedIndex = listWorldPresetComboBox.getSelectedIndex();
+            listWorldPresetComboBox.setModel(new DefaultComboBoxModel<>(getWorldPresetOptions()));
+            listWorldPresetComboBox.setSelectedIndex(Math.max(0, selectedIndex));
         }
         if (listSearchSeedFileButton != null) {
             listSearchSeedFileButton.setText(getString("button.selectFile"));
@@ -1878,6 +1945,7 @@ public class LowYSwampHutForFixedSeed extends JFrame {
                 listSearchThreadCountField.setEnabled(true);
                 listMaxHeightComboBox.setEnabled(true);
                 listVersionComboBox.setEnabled(true);
+                listWorldPresetComboBox.setEnabled(true);
                 listMinXField.setEnabled(true);
                 listMaxXField.setEnabled(true);
                 listMinZField.setEnabled(true);
@@ -1965,10 +2033,11 @@ public class LowYSwampHutForFixedSeed extends JFrame {
                     // 获取版本参数
                     String selectedVersion = (String) listVersionComboBox.getSelectedItem();
                     MCVersion mcVersion = getMCVersion(selectedVersion != null ? selectedVersion : "1.21.1");
+                    WorldPresetMode worldPresetMode = getWorldPresetMode((String) listWorldPresetComboBox.getSelectedItem());
 
                     // 如果版本变化，需要重新创建searcher
-                    if (listSearcher == null || !listSearcher.getMCVersion().equals(mcVersion)) {
-                        listSearcher = new SearchCoords(mcVersion);
+                    if (listSearcher == null || !listSearcher.getMCVersion().equals(mcVersion) || listSearcher.getWorldPresetMode() != worldPresetMode) {
+                        listSearcher = new SearchCoords(mcVersion, worldPresetMode);
                     }
 
                     // 批量处理模式下，暂停/恢复功能简化处理
@@ -2163,6 +2232,7 @@ public class LowYSwampHutForFixedSeed extends JFrame {
             listSearchThreadCountField.setEnabled(false);
             listMaxHeightComboBox.setEnabled(false);
             listVersionComboBox.setEnabled(false);
+            listWorldPresetComboBox.setEnabled(false);
             listMinXField.setEnabled(false);
             listMaxXField.setEnabled(false);
             listMinZField.setEnabled(false);
@@ -2181,6 +2251,7 @@ public class LowYSwampHutForFixedSeed extends JFrame {
             // 获取选择的版本
             String selectedVersion = (String) listVersionComboBox.getSelectedItem();
             MCVersion mcVersion = getMCVersion(selectedVersion != null ? selectedVersion : "1.21.1");
+            WorldPresetMode worldPresetMode = getWorldPresetMode((String) listWorldPresetComboBox.getSelectedItem());
 
             // 在新线程中批量处理所有种子
             final int finalThreadCount = threadCount;
@@ -2261,7 +2332,7 @@ public class LowYSwampHutForFixedSeed extends JFrame {
 
                     seedResults.put(seed, new ArrayList<>());
 
-                    listSearcher = new SearchCoords(mcVersion);
+                    listSearcher = new SearchCoords(mcVersion, worldPresetMode);
                     final long currentSeed = seed;
 
                     // 创建结果回调，按种子分组
@@ -2385,6 +2456,7 @@ public class LowYSwampHutForFixedSeed extends JFrame {
                     listSearchThreadCountField.setEnabled(true);
                     listMaxHeightComboBox.setEnabled(true);
                     listVersionComboBox.setEnabled(true);
+                    listWorldPresetComboBox.setEnabled(true);
                     listMinXField.setEnabled(true);
                     listMaxXField.setEnabled(true);
                     listMinZField.setEnabled(true);
@@ -2438,6 +2510,7 @@ public class LowYSwampHutForFixedSeed extends JFrame {
         listSearchThreadCountField.setEnabled(true);
         listMaxHeightComboBox.setEnabled(true);
         listVersionComboBox.setEnabled(true);
+        listWorldPresetComboBox.setEnabled(true);
         listMinXField.setEnabled(true);
         listMaxXField.setEnabled(true);
         listMinZField.setEnabled(true);
@@ -2742,4 +2815,3 @@ public class LowYSwampHutForFixedSeed extends JFrame {
         });
     }
 }
-

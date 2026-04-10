@@ -30,6 +30,7 @@ public class SearchCoords {
 
     private final SwampHut swampHut;
     private final MCVersion mcVersion;
+    private final WorldPresetMode worldPresetMode;
     private ExecutorService executor;
     private Thread progressThread;
     private volatile boolean isRunning = false;
@@ -57,8 +58,9 @@ public class SearchCoords {
     public record ProgressInfo(long processed, long total, double percentage, long elapsedMs, long remainingMs) {
     }
 
-    public SearchCoords(MCVersion mcVersion) {
+    public SearchCoords(MCVersion mcVersion, WorldPresetMode worldPresetMode) {
         this.mcVersion = mcVersion;
+        this.worldPresetMode = worldPresetMode;
         this.swampHut = new SwampHut(mcVersion);
     }
 
@@ -229,6 +231,10 @@ public class SearchCoords {
         return mcVersion;
     }
 
+    public WorldPresetMode getWorldPresetMode() {
+        return worldPresetMode;
+    }
+
     class RegionChecker implements Runnable {
         private final long seed;
         private final int startX;
@@ -261,9 +267,9 @@ public class SearchCoords {
             // 根据任务规模决定是否预先初始化线程本地缓存
             // 注意：即使不预热，后续调用处也会按需创建并写入 ThreadLocal
             if (needCache) {
-                NOISE_CACHE.set(new NoiseCache(seed));
+                NOISE_CACHE.set(new NoiseCache(seed, worldPresetMode));
                 CHEESE_CACHE.set(new CheeseNoiseCache(seed));
-                SEED_CHECKER.set(new SeedChecker(seed, TargetState.NO_STRUCTURES, SeedCheckerDimension.OVERWORLD));
+                SEED_CHECKER.set(SeedCheckerFactory.create(seed, TargetState.NO_STRUCTURES, SeedCheckerDimension.OVERWORLD, worldPresetMode));
             }
             // 将maxHeight转换为int，用于Box和check方法
             int maxHeightInt = (int) maxHeight;
@@ -292,26 +298,34 @@ public class SearchCoords {
                     }
                     try {
                         // 计算该点的实际高度
-                        SeedChecker checker = new SeedChecker(seed, TargetState.NO_STRUCTURES, SeedCheckerDimension.OVERWORLD);
+                        SeedChecker checker = SeedCheckerFactory.create(seed, TargetState.NO_STRUCTURES, SeedCheckerDimension.OVERWORLD, worldPresetMode);
                         Box box = new Box(16 * pos.getX() + 3, maxHeightInt, 16 * pos.getZ() + 3,
                                 16 * pos.getX() + 4, 128, 16 * pos.getZ() + 4);
                         if (checker.getBlockCountInBox(Blocks.AIR, box) != expectedAirCount) {
                             checker.clearMemory();
                             continue;
                         }
-                        // 计算整个女巫小屋的实际高度
+                        // 优先使用真实生成的小屋最低Y（地板Y-1），未生成时再回退到地形估算高度
                         int hutX = 16 * pos.getX();
                         int hutZ = 16 * pos.getZ();
-                        Result result = checkHeight(seed, hutX, hutZ, mcVersion);
+                        Integer generatedFloorY = findGeneratedHutFloorY(seed, hutX, hutZ, worldPresetMode);
+                        Result result = generatedFloorY != null
+                                ? new Result(hutX, hutZ, generatedFloorY - 1)
+                                : checkHeight(seed, hutX, hutZ, mcVersion, worldPresetMode);
 
                         // 只有当高度 <= maxHeight 时才输出
                         if (!(result.height <= maxHeight)) {
                             checker.clearMemory();
                             continue;
                         }
+                        if (worldPresetMode == WorldPresetMode.LARGE_BIOMES
+                                && generatedFloorY == null) {
+                            checker.clearMemory();
+                            continue;
+                        }
                         // 如果开启了精确检查，检查女巫小屋是否可以生成
                         String resultStr = result.toString();
-                        if (checkGeneration && !checkHutGeneration(seed, hutX, hutZ, maxHeight)) {
+                        if (checkGeneration && generatedFloorY == null) {
                             resultStr += " x";
                         }
                         synchronized (results) {
@@ -348,28 +362,31 @@ public class SearchCoords {
     }
 
     // 检查女巫小屋是否可以生成（检查云杉木板）
-    public static boolean checkHutGeneration(long seed, int hutX, int hutZ, double maxHeight) {
-        SeedChecker checker = new SeedChecker(seed, TargetState.STRUCTURES, SeedCheckerDimension.OVERWORLD);
+    public static boolean checkHutGeneration(long seed, int hutX, int hutZ, double maxHeight, WorldPresetMode worldPresetMode) {
+        return findGeneratedHutFloorY(seed, hutX, hutZ, worldPresetMode) != null;
+    }
+
+    public static Integer findGeneratedHutFloorY(long seed, int hutX, int hutZ, WorldPresetMode worldPresetMode) {
+        SeedChecker checker = SeedCheckerFactory.create(seed, TargetState.STRUCTURES, SeedCheckerDimension.OVERWORLD, worldPresetMode);
         try {
-            int startY = (int) (maxHeight + 10);
-            for (int y = startY; y >= -54; y--) {
+            for (int y = -64; y <= 200; y++) {
                 if (checker.getBlock(hutX + 2, y, hutZ + 2) == Blocks.SPRUCE_PLANKS) {
-                    return true;
+                    return y;
                 }
             }
-            return false;
+            return null;
         } finally {
             checker.clearMemory();
         }
     }
 
-    // 计算女巫小屋的高度
-    public static Result checkHeight(long seed, int x, int z, MCVersion mcVersion) {
+    // 估算女巫小屋所在区域的地形高度，用作未生成结构时的回退值
+    public static Result checkHeight(long seed, int x, int z, MCVersion mcVersion, WorldPresetMode worldPresetMode) {
         long structureSeed = seed & 281474976710655L;
         ChunkRand rand = new ChunkRand();
         rand.setCarverSeed(structureSeed, x / 16, z / 16, mcVersion);
         float a = rand.nextFloat();
-        SeedChecker checker = new SeedChecker(seed, TargetState.NO_STRUCTURES, SeedCheckerDimension.OVERWORLD);
+        SeedChecker checker = SeedCheckerFactory.create(seed, TargetState.NO_STRUCTURES, SeedCheckerDimension.OVERWORLD, worldPresetMode);
         int totalHeight = 0;
         if (a < 0.25F || (a >= 0.5F && a < 0.75F)) {
             for (int i = x; i < x + 7; i++) {
@@ -403,10 +420,10 @@ public class SearchCoords {
 
     public boolean check(long seed, int x, int z, int maxHeight) {
         NoiseCache cache;
-        if (currentNeedCache && NOISE_CACHE.get() != null) {
+        if (currentNeedCache && NOISE_CACHE.get() != null && NOISE_CACHE.get().worldPresetMode == worldPresetMode) {
             cache = NOISE_CACHE.get();
         } else {
-            cache = new NoiseCache(seed);
+            cache = new NoiseCache(seed, worldPresetMode);
             if (currentNeedCache) {
                 NOISE_CACHE.set(cache);
             }
@@ -454,11 +471,7 @@ public class SearchCoords {
                 return false;
             }
         }
-        LazyDoublePerlinNoiseSampler continentalnessNoise = LazyDoublePerlinNoiseSampler.createNoiseSampler(
-                new Xoroshiro128PlusPlusRandom(seed).createRandomDeriver(),
-                NoiseParameterKey.CONTINENTALNESS
-        );
-        if (continentalnessNoise.sample((double) x / 4, 0, (double) z / 4) < -0.11) {
+        if (cache.continentalness.sample((double) x / 4, 0, (double) z / 4) < -0.11) {
             return false;
         }
         LazyDoublePerlinNoiseSampler aquiferNoise = LazyDoublePerlinNoiseSampler.createNoiseSampler(
@@ -474,6 +487,7 @@ public class SearchCoords {
     }
 
     private static class NoiseCache {
+        final WorldPresetMode worldPresetMode;
         final LazyDoublePerlinNoiseSampler caveEntrance;
         final LazyDoublePerlinNoiseSampler spaghettiRarity;
         final LazyDoublePerlinNoiseSampler spaghettiThickness;
@@ -483,9 +497,11 @@ public class SearchCoords {
         final LazyDoublePerlinNoiseSampler spaghettiRoughness;
         final LazyDoublePerlinNoiseSampler erosion;
         final LazyDoublePerlinNoiseSampler temperature;
+        final LazyDoublePerlinNoiseSampler continentalness;
         final LazyDoublePerlinNoiseSampler ridge;
 
-        NoiseCache(long worldSeed) {
+        NoiseCache(long worldSeed, WorldPresetMode worldPresetMode) {
+            this.worldPresetMode = worldPresetMode;
             Xoroshiro128PlusPlusRandom random = new Xoroshiro128PlusPlusRandom(worldSeed);
             var deriver = random.createRandomDeriver();
             caveEntrance = LazyDoublePerlinNoiseSampler.createNoiseSampler(deriver, NoiseParameterKey.CAVE_ENTRANCE);
@@ -495,8 +511,12 @@ public class SearchCoords {
             spaghetti3D2 = LazyDoublePerlinNoiseSampler.createNoiseSampler(deriver, NoiseParameterKey.SPAGHETTI_3D_2);
             spaghettiRoughnessModulator = LazyDoublePerlinNoiseSampler.createNoiseSampler(deriver, NoiseParameterKey.SPAGHETTI_ROUGHNESS_MODULATOR);
             spaghettiRoughness = LazyDoublePerlinNoiseSampler.createNoiseSampler(deriver, NoiseParameterKey.SPAGHETTI_ROUGHNESS);
-            erosion = LazyDoublePerlinNoiseSampler.createNoiseSampler(deriver, NoiseParameterKey.EROSION);
-            temperature = LazyDoublePerlinNoiseSampler.createNoiseSampler(deriver, NoiseParameterKey.TEMPERATURE);
+            NoiseParameterKey erosionKey = worldPresetMode == WorldPresetMode.LARGE_BIOMES ? NoiseParameterKey.EROSION_LARGE : NoiseParameterKey.EROSION;
+            NoiseParameterKey temperatureKey = worldPresetMode == WorldPresetMode.LARGE_BIOMES ? NoiseParameterKey.TEMPERATURE_LARGE : NoiseParameterKey.TEMPERATURE;
+            NoiseParameterKey continentalnessKey = worldPresetMode == WorldPresetMode.LARGE_BIOMES ? NoiseParameterKey.CONTINENTALNESS_LARGE : NoiseParameterKey.CONTINENTALNESS;
+            erosion = LazyDoublePerlinNoiseSampler.createNoiseSampler(deriver, erosionKey);
+            temperature = LazyDoublePerlinNoiseSampler.createNoiseSampler(deriver, temperatureKey);
+            continentalness = LazyDoublePerlinNoiseSampler.createNoiseSampler(deriver, continentalnessKey);
             ridge = LazyDoublePerlinNoiseSampler.createNoiseSampler(deriver, NoiseParameterKey.RIDGE);
         }
     }
@@ -518,7 +538,7 @@ public class SearchCoords {
         if (needCache && NOISE_CACHE.get() != null) {
             cache = NOISE_CACHE.get();
         } else {
-            cache = new NoiseCache(worldSeed);
+            cache = new NoiseCache(worldSeed, WorldPresetMode.NORMAL);
             if (needCache) {
                 NOISE_CACHE.set(cache);
             }
@@ -558,7 +578,7 @@ public class SearchCoords {
         if (needCache && NOISE_CACHE.get() != null) {
             cache = NOISE_CACHE.get();
         } else {
-            cache = new NoiseCache(worldSeed);
+            cache = new NoiseCache(worldSeed, WorldPresetMode.NORMAL);
             if (needCache) {
                 NOISE_CACHE.set(cache);
             }
@@ -576,4 +596,3 @@ public class SearchCoords {
         return p + q;
     }
 }
-

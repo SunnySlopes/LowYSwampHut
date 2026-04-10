@@ -16,6 +16,10 @@ public class SeedCheckerInitializer {
      * 这必须在任何多线程使用 SeedChecker 之前调用
      */
     public static void initialize() {
+        initialize(WorldPresetMode.NORMAL);
+    }
+
+    public static void initialize(WorldPresetMode worldPresetMode) {
         if (initialized) {
             return;
         }
@@ -39,8 +43,10 @@ public class SeedCheckerInitializer {
                 // 使用同步块确保只有一个线程初始化
                 // 注意：SharedConstants 应该已经在 Launcher 中初始化了
                 synchronized (SeedCheckerInitializer.class) {
-                    SeedChecker preInit = new SeedChecker(0L, TargetState.NO_STRUCTURES, SeedCheckerDimension.OVERWORLD);
-                    preInit.clearMemory();
+                    SeedCheckerFactory.runWithPreset(worldPresetMode, () -> {
+                        SeedChecker preInit = new SeedChecker(0L, TargetState.NO_STRUCTURES, SeedCheckerDimension.OVERWORLD);
+                        preInit.clearMemory();
+                    });
                 }
                 initialized = true;
             } catch (ExceptionInInitializerError e) {
@@ -68,4 +74,3 @@ public class SeedCheckerInitializer {
         }
     }
 }
-
