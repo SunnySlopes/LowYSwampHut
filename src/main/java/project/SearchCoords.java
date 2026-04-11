@@ -450,27 +450,27 @@ public class SearchCoords {
                 return false;
             }
         }
-        if (Entrance(seed, x, 50, z, currentNeedCache) >= 0) {
+        if (Entrance(seed, x, 50, z, currentNeedCache, worldPresetMode) >= 0) {
             return false;
         }
-        if (Entrance(seed, x, 60, z, currentNeedCache) >= 0) {
+        if (Entrance(seed, x, 60, z, currentNeedCache, worldPresetMode) >= 0) {
             return false;
         }
         // 检查maxHeight本身
-        if (Entrance2(seed, x, maxHeight, z, currentNeedCache) >= 0 && Cheese(seed, x, maxHeight, z, currentNeedCache) >= 0) {
+        if (Entrance2(seed, x, maxHeight, z, currentNeedCache, worldPresetMode) >= 0 && Cheese(seed, x, maxHeight, z, currentNeedCache) >= 0) {
             return false;
         }
         // 0以下使用Entrance2
         for (int y = 0; y >= -40; y -= 10) {
             if (maxHeight < y) {
-                if (Entrance2(seed, x, y, z, currentNeedCache) >= 0 && Cheese(seed, x, y, z, currentNeedCache) >= 0) {
+                if (Entrance2(seed, x, y, z, currentNeedCache, worldPresetMode) >= 0 && Cheese(seed, x, y, z, currentNeedCache) >= 0) {
                     return false;
                 }
             }
         }
         // 10-40使用Entrance（较复杂）
         for (int y = 10; y <= 40; y += 10) {
-            if (Entrance(seed, x, y, z, currentNeedCache) >= 0 && Cheese(seed, x, y, z, currentNeedCache) >= 0) {
+            if (Entrance(seed, x, y, z, currentNeedCache, worldPresetMode) >= 0 && Cheese(seed, x, y, z, currentNeedCache) >= 0) {
                 return false;
             }
         }
@@ -536,12 +536,12 @@ public class SearchCoords {
         }
     }
 
-    public static double Entrance(long worldSeed, int x, int y, int z, boolean needCache) {
+    public static double Entrance(long worldSeed, int x, int y, int z, boolean needCache, WorldPresetMode worldPresetMode) {
         NoiseCache cache;
         if (needCache && NOISE_CACHE.get() != null) {
             cache = NOISE_CACHE.get();
         } else {
-            cache = new NoiseCache(worldSeed, WorldPresetMode.NORMAL);
+            cache = new NoiseCache(worldSeed, worldPresetMode);
             if (needCache) {
                 NOISE_CACHE.set(cache);
             }
@@ -576,12 +576,12 @@ public class SearchCoords {
         return a + b;//Actually there still need to add a function about sloped_cheese, but sloped_cheese is too complex and IDK how to calculate it.
     }
 
-    public static double Entrance2(long worldSeed, int x, int y, int z, boolean needCache) {
+    public static double Entrance2(long worldSeed, int x, int y, int z, boolean needCache, WorldPresetMode worldPresetMode) {
         NoiseCache cache;
         if (needCache && NOISE_CACHE.get() != null) {
             cache = NOISE_CACHE.get();
         } else {
-            cache = new NoiseCache(worldSeed, WorldPresetMode.NORMAL);
+            cache = new NoiseCache(worldSeed, worldPresetMode);
             if (needCache) {
                 NOISE_CACHE.set(cache);
             }
