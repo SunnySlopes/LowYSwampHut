@@ -64,17 +64,17 @@ The top-left part is the **Parameter Settings** area, which includes:
 
 **筛选女巫小屋高度**：女巫小屋的最大 Y 坐标。值越高，搜索越慢。选项：0、-10、-20、-30、-40（默认：-40）。
 
-**Version**: The Minecraft version to use. Options: 1.21.1, 1.20.1, 1.19.2, 1.18.2 (default: 1.21.1).
+**Version**: The Minecraft version to use. Options: 26.2, 1.21.1~26.1, 1.20.1, 1.19.2, 1.18.2 (default: 1.21.1).
 
-**版本**：要使用的 Minecraft 版本。选项：1.21.1、1.20.1、1.19.2、1.18.2（默认：1.21.1）。
+**版本**：要使用的 Minecraft 版本。选项：26.2、1.21.1~26.1、1.20.1、1.19.2、1.18.2（默认：1.21.1）。
 
 **MinX/MaxX/MinZ/MaxZ (x512)**: The coordinate range to search for Swamp Huts. The default values are the world boundaries (-58594 to 58593). Valid range is -30,000,000 to 30,000,000.
 
 **MinX/MaxX/MinZ/MaxZ (x512)**：搜索女巫小屋的坐标范围。默认值为世界边界（-58594 到 58593）。有效范围为 -30,000,000 到 30,000,000。
 
-**Precise Generation Check (Slightly Affects Efficiency)**: When enabled, the program will check whether the Swamp Hut can actually generate at each coordinate. Coordinates that cannot generate will be marked with "无法生成" (cannot generate). **Note: Enabling this option will slightly reduce search efficiency, but it helps filter out coordinates that cannot actually generate huts.**
+**Precise Generation Check (Slightly Affects Efficiency)**: When enabled, the program will check whether the Swamp Hut can actually generate at each coordinate. Coordinates that cannot generate will be marked with "x". **Note: Enabling this option will slightly reduce search efficiency, but it helps filter out coordinates that cannot actually generate huts.**
 
-**精确检查生成情况(略微影响效率)**：启用后，程序将检查每个坐标是否能够实际生成女巫小屋。无法生成的坐标将被标记为"无法生成"。**注意：启用此选项会略微降低搜索效率，但有助于筛选出无法实际生成小屋的坐标。**
+**精确检查生成情况(略微影响效率)**：启用后，程序将检查每个坐标是否能够实际生成女巫小屋。无法生成的坐标将被标记为"x"。**注意：启用此选项会略微降低搜索效率，但有助于筛选出无法实际生成小屋的坐标。**
 
 The top-right part shows the **Search Results**. The results are displayed in the format `/tp x y z`, where y is the Y-coordinate of the Swamp Hut. **Note: The actual hut Y-coordinate may be within ±1 block of the output coordinate. When precise generation check is enabled, the program can indicate whether the hut can actually generate.**
 

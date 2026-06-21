@@ -1,7 +1,5 @@
 package project;
 
-import com.seedfinding.mccore.version.MCVersion;
-
 import javax.swing.*;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.*;
@@ -271,9 +269,9 @@ public class LowYSwampHutForFixedSeed extends JFrame {
         gbc.gridx = 1;
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.weightx = 1.0;
-        String[] versionOptions = {"1.21.1", "1.20.1", "1.19.2", "1.18.2"};
+        String[] versionOptions = GameVersion.displayNames();
         versionComboBox = new JComboBox<>(versionOptions);
-        versionComboBox.setSelectedIndex(0); // 默认选择 1.21.1
+        versionComboBox.setSelectedIndex(0); // 默认选择 26.2
         inputPanel.add(versionComboBox, gbc);
 
         // 世界类型选择下拉框
@@ -773,12 +771,12 @@ public class LowYSwampHutForFixedSeed extends JFrame {
                     assert selectedHeight != null;
                     double maxHeight = Double.parseDouble(selectedHeight);
                     String selectedVersion = (String) versionComboBox.getSelectedItem();
-                    MCVersion mcVersion = getMCVersion(selectedVersion != null ? selectedVersion : "1.21.1");
+                    GameVersion gameVersion = GameVersion.fromDisplayName(selectedVersion);
                     WorldPresetMode worldPresetMode = getWorldPresetMode((String) worldPresetComboBox.getSelectedItem());
 
                     // 如果版本变化，需要重新创建searcher
-                    if (searcher == null || !searcher.getMCVersion().equals(mcVersion) || searcher.getWorldPresetMode() != worldPresetMode) {
-                        searcher = new SearchCoords(mcVersion, worldPresetMode);
+                    if (searcher == null || !searcher.getGameVersion().equals(gameVersion) || searcher.getWorldPresetMode() != worldPresetMode) {
+                        searcher = new SearchCoords(gameVersion, worldPresetMode);
                     }
 
                     // 调用startSearch，它会检测到暂停状态并调整线程数
@@ -1010,11 +1008,10 @@ public class LowYSwampHutForFixedSeed extends JFrame {
             searchRemainingTimeLabel.setText(getString("remainingTime.calculating"));
 
             // 获取选择的版本
-            String selectedVersion = (String) versionComboBox.getSelectedItem();
-            MCVersion mcVersion = getMCVersion(selectedVersion != null ? selectedVersion : "1.21.1");
+            GameVersion gameVersion = GameVersion.fromDisplayName((String) versionComboBox.getSelectedItem());
             WorldPresetMode worldPresetMode = getWorldPresetMode((String) worldPresetComboBox.getSelectedItem());
 
-            searcher = new SearchCoords(mcVersion, worldPresetMode);
+            searcher = new SearchCoords(gameVersion, worldPresetMode);
             boolean checkGeneration = isSingleSeedPreciseGenerationCheckEffective();
             searcher.startSearch(seed, threadCount, minX, maxX, minZ, maxZ, maxHeight, this::updateSearchProgress, this::addSearchResult, checkGeneration);
 
@@ -1155,9 +1152,9 @@ public class LowYSwampHutForFixedSeed extends JFrame {
         gbc.gridx = 1;
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.weightx = 1.0;
-        String[] versionOptions = {"1.21.1", "1.20.1", "1.19.2", "1.18.2"};
+        String[] versionOptions = GameVersion.displayNames();
         listVersionComboBox = new JComboBox<>(versionOptions);
-        listVersionComboBox.setSelectedIndex(0); // 默认选择 1.21.1
+        listVersionComboBox.setSelectedIndex(0); // 默认选择 1.21~26.1
         inputPanel.add(listVersionComboBox, gbc);
 
         // 世界类型选择下拉框
@@ -1556,18 +1553,6 @@ public class LowYSwampHutForFixedSeed extends JFrame {
             return loadedFont;
         }
         return new Font(Font.SANS_SERIF, Font.PLAIN, 12);
-    }
-
-    /**
-     * 将版本字符串转换为 MCVersion
-     */
-    private MCVersion getMCVersion(String versionString) {
-        return switch (versionString) {
-            case "1.18.2" -> MCVersion.v1_18_2;
-            case "1.19.2" -> MCVersion.v1_19_2;
-            case "1.20.1" -> MCVersion.v1_20_1;
-            default -> MCVersion.v1_21;
-        };
     }
 
     private String[] getWorldPresetOptions() {
@@ -2101,12 +2086,12 @@ public class LowYSwampHutForFixedSeed extends JFrame {
                 if (threadCount != lastListSearchThreadCount) {
                     // 获取版本参数
                     String selectedVersion = (String) listVersionComboBox.getSelectedItem();
-                    MCVersion mcVersion = getMCVersion(selectedVersion != null ? selectedVersion : "1.21.1");
+                    GameVersion gameVersion = GameVersion.fromDisplayName(selectedVersion);
                     WorldPresetMode worldPresetMode = getWorldPresetMode((String) listWorldPresetComboBox.getSelectedItem());
 
                     // 如果版本变化，需要重新创建searcher
-                    if (listSearcher == null || !listSearcher.getMCVersion().equals(mcVersion) || listSearcher.getWorldPresetMode() != worldPresetMode) {
-                        listSearcher = new SearchCoords(mcVersion, worldPresetMode);
+                    if (listSearcher == null || !listSearcher.getGameVersion().equals(gameVersion) || listSearcher.getWorldPresetMode() != worldPresetMode) {
+                        listSearcher = new SearchCoords(gameVersion, worldPresetMode);
                     }
                 }
                 // 恢复
@@ -2307,8 +2292,7 @@ public class LowYSwampHutForFixedSeed extends JFrame {
             seedResults.clear();
 
             // 获取选择的版本
-            String selectedVersion = (String) listVersionComboBox.getSelectedItem();
-            MCVersion mcVersion = getMCVersion(selectedVersion != null ? selectedVersion : "1.21.1");
+            GameVersion gameVersion = GameVersion.fromDisplayName((String) listVersionComboBox.getSelectedItem());
             WorldPresetMode worldPresetMode = getWorldPresetMode((String) listWorldPresetComboBox.getSelectedItem());
 
             // 在新线程中批量处理所有种子
@@ -2390,7 +2374,7 @@ public class LowYSwampHutForFixedSeed extends JFrame {
 
                     seedResults.put(seed, new ArrayList<>());
 
-                    listSearcher = new SearchCoords(mcVersion, worldPresetMode);
+                    listSearcher = new SearchCoords(gameVersion, worldPresetMode);
 
                     // 创建结果回调，按种子分组
                     Consumer<String> seedResultCallback = result -> seedResults.get(seed).add(result);

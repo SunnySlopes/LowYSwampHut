@@ -28,6 +28,7 @@ import java.util.function.Consumer;
 public class SearchCoords {
 
     private final SwampHut swampHut;
+    private final GameVersion gameVersion;
     private final MCVersion mcVersion;
     private final WorldPresetMode worldPresetMode;
     private ExecutorService executor;
@@ -57,8 +58,9 @@ public class SearchCoords {
     public record ProgressInfo(long processed, long total, double percentage, long elapsedMs, long remainingMs) {
     }
 
-    public SearchCoords(MCVersion mcVersion, WorldPresetMode worldPresetMode) {
-        this.mcVersion = mcVersion;
+    public SearchCoords(GameVersion gameVersion, WorldPresetMode worldPresetMode) {
+        this.gameVersion = gameVersion;
+        this.mcVersion = gameVersion.getMcVersion();
         this.worldPresetMode = worldPresetMode;
         this.swampHut = new SwampHut(mcVersion);
     }
@@ -226,6 +228,10 @@ public class SearchCoords {
         return new ArrayList<>(results);
     }
 
+    public GameVersion getGameVersion() {
+        return gameVersion;
+    }
+
     public MCVersion getMCVersion() {
         return mcVersion;
     }
@@ -289,7 +295,7 @@ public class SearchCoords {
                     }
                     CPos pos = swampHut.getInRegion(seed, x, z, rand);
                     // 阶段1：检查噪声和群系条件
-                    if (!SearchCoords.this.check(seed, 16 * pos.getX() + 3, 16 * pos.getZ() + 3, maxHeightInt)) {
+                    if (!SearchCoords.this.check(seed, 16 * pos.getX(), 16 * pos.getZ(), maxHeightInt)) {
                         // 更新进度计数器
                         processedCount.incrementAndGet();
                         continue;
@@ -428,13 +434,18 @@ public class SearchCoords {
                 NOISE_CACHE.set(cache);
             }
         }
+        int climateX = x + 8;
+        int climateZ = z + 8;
+        int heightX = x + 3;
+        int heightZ = z + 3;
+
         boolean isSingleBiome = worldPresetMode == WorldPresetMode.SINGLE_BIOME;
         if (!isSingleBiome) { // 检查群系
-            double erosionSample = cache.erosion.sample((double) x / 4, 0, (double) z / 4);
+            double erosionSample = cache.erosion.sample((double) climateX / 4, 0, (double) climateZ / 4);
             if (erosionSample < 0.55) {
                 return false;
             }
-            double temperature = cache.temperature.sample((double) x / 4, 0, (double) z / 4);
+            double temperature = cache.temperature.sample((double) climateX / 4, 0, (double) climateZ / 4);
             // 1.18.2版本只检查温度不能小于-0.45，其他版本检查温度不能小于-0.45且不能大于0.2
             if (mcVersion == MCVersion.v1_18_2) {
                 if (temperature < -0.45) {
@@ -445,36 +456,39 @@ public class SearchCoords {
                     return false;
                 }
             }
-            double ridge = cache.ridge.sample((double) x / 4, 0, (double) z / 4);
-            if ((ridge > 0.46 && ridge < 0.88) || (ridge < -0.46 && ridge > -0.88)) {
+            double ridge = cache.ridge.sample((double) climateX / 4, 0, (double) climateZ / 4);
+            if ((ridge > 0.42 && ridge < 0.91) || (ridge < -0.42 && ridge > -0.91)) {
+                return false;
+            }
+            if (gameVersion == GameVersion.V26_2 && ridge <= -0.91) {
                 return false;
             }
         }
-        if (Entrance(seed, x, 50, z, currentNeedCache, worldPresetMode) >= 0) {
+        if (Entrance(seed, heightX, 50, heightZ, currentNeedCache, worldPresetMode) >= 0) {
             return false;
         }
-        if (Entrance(seed, x, 60, z, currentNeedCache, worldPresetMode) >= 0) {
+        if (Entrance(seed, heightX, 60, heightZ, currentNeedCache, worldPresetMode) >= 0) {
             return false;
         }
         // 检查maxHeight本身
-        if (Entrance2(seed, x, maxHeight, z, currentNeedCache, worldPresetMode) >= 0 && Cheese(seed, x, maxHeight, z, currentNeedCache) >= 0) {
+        if (Entrance2(seed, heightX, maxHeight, heightZ, currentNeedCache, worldPresetMode) >= 0 && Cheese(seed, heightX, maxHeight, heightZ, currentNeedCache) >= 0) {
             return false;
         }
         // 0以下使用Entrance2
         for (int y = 0; y >= -40; y -= 10) {
             if (maxHeight < y) {
-                if (Entrance2(seed, x, y, z, currentNeedCache, worldPresetMode) >= 0 && Cheese(seed, x, y, z, currentNeedCache) >= 0) {
+                if (Entrance2(seed, heightX, y, heightZ, currentNeedCache, worldPresetMode) >= 0 && Cheese(seed, heightX, y, heightZ, currentNeedCache) >= 0) {
                     return false;
                 }
             }
         }
         // 10-40使用Entrance（较复杂）
         for (int y = 10; y <= 40; y += 10) {
-            if (Entrance(seed, x, y, z, currentNeedCache, worldPresetMode) >= 0 && Cheese(seed, x, y, z, currentNeedCache) >= 0) {
+            if (Entrance(seed, heightX, y, heightZ, currentNeedCache, worldPresetMode) >= 0 && Cheese(seed, heightX, y, heightZ, currentNeedCache) >= 0) {
                 return false;
             }
         }
-        if (!isSingleBiome && cache.continentalness.sample((double) x / 4, 0, (double) z / 4) < -0.11) { // 检查大陆性
+        if (!isSingleBiome && cache.continentalness.sample((double) climateX / 4, 0, (double) climateZ / 4) < -0.11) { // 检查大陆性
             return false;
         }
         LazyDoublePerlinNoiseSampler aquiferNoise = LazyDoublePerlinNoiseSampler.createNoiseSampler(
@@ -482,7 +496,7 @@ public class SearchCoords {
                 NoiseParameterKey.AQUIFER_FLUID_LEVEL_FLOODEDNESS
         );
         for (int y = maxHeight; y <= 60; y += 10) {
-            if (aquiferNoise.sample(x, y * 0.67, z) > 0.41) {
+            if (aquiferNoise.sample(heightX, y * 0.67, heightZ) > 0.41) {
                 return false;
             }
         }
