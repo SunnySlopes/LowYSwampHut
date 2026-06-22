@@ -1,9 +1,17 @@
+import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+import com.github.jengelman.gradle.plugins.shadow.transformers.Log4j2PluginsCacheFileTransformer
+import com.github.jengelman.gradle.plugins.shadow.transformers.PropertiesFileTransformer
+
 plugins {
     id 'java'
     id 'com.github.johnrengelman.shadow' version '8.1.1'
 }
+java {
+    sourceCompatibility = '17'
+    targetCompatibility = '17'
+}
 group 'org.example'
-version '1.3.1'
+version '1.3.2'
 repositories {
     mavenCentral()
     gradlePluginPortal()
@@ -53,7 +61,7 @@ shadowJar {
 }
 
 // 创建 LowYSwampHutForFixedSeed 的可执行 JAR
-tasks.register('buildMainJar', com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar) {
+tasks.register('buildMainJar', ShadowJar) {
     group = 'build'
     description = 'Creates a fat JAR for LowYSwampHutForFixedSeed'
     archiveBaseName.set('LowYSwampHutForFixedSeedGUI')
@@ -65,8 +73,8 @@ tasks.register('buildMainJar', com.github.jengelman.gradle.plugins.shadow.tasks.
         attributes 'Multi-Release': 'true'
     }
     mergeServiceFiles()
-    transform(com.github.jengelman.gradle.plugins.shadow.transformers.Log4j2PluginsCacheFileTransformer)
-    transform(com.github.jengelman.gradle.plugins.shadow.transformers.PropertiesFileTransformer) {
+    transform(Log4j2PluginsCacheFileTransformer)
+    transform(PropertiesFileTransformer) {
         paths = ['META-INF/spring.handlers', 'META-INF/spring.schemas']
         mergeStrategy = "append"
     }

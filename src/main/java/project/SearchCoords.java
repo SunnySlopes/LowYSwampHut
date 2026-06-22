@@ -45,15 +45,9 @@ public class SearchCoords {
     private Consumer<String> currentResultCallback;
     private int currentThreadCount;
     private boolean currentCheckGeneration;
-    private boolean currentNeedCache;
 
-    // ================= 线程缓存优化 =================
-    private static final ThreadLocal<NoiseCache> NOISE_CACHE =
-            new ThreadLocal<>();
-    private static final ThreadLocal<CheeseNoiseCache> CHEESE_CACHE =
-            new ThreadLocal<>();
-    private static final ThreadLocal<SeedChecker> SEED_CHECKER =
-            new ThreadLocal<>();
+    // ================= 每线程每种子缓存（噪声采样器 + SeedChecker） =================
+    private static final ThreadLocal<ThreadSeedResources> THREAD_RESOURCES = new ThreadLocal<>();
 
     public record ProgressInfo(long processed, long total, double percentage, long elapsedMs, long remainingMs) {
     }
@@ -64,7 +58,6 @@ public class SearchCoords {
         this.worldPresetMode = worldPresetMode;
         this.swampHut = new SwampHut(mcVersion);
     }
-
     public void startSearch(long seed, int threadCount, int minX, int maxX, int minZ, int maxZ, double maxHeight,
                             Consumer<ProgressInfo> progressCallback, Consumer<String> resultCallback, boolean checkGeneration) {
         // 如果正在运行且处于暂停状态，且线程数变化，则调整线程数
@@ -80,8 +73,6 @@ public class SearchCoords {
         results.clear();
 
         long totalTasks = (long) (maxX - minX) * (maxZ - minZ);
-        // 如果单种子搜索范围<500*500区块，那不用缓存更快，否则用缓存更快
-        currentNeedCache = totalTasks >= 250000;
 
         // 保存当前搜索状态
         currentSeed = seed;
@@ -147,7 +138,7 @@ public class SearchCoords {
         for (int i = 0; i < threadCount; i++) {
             int startX = minX + i * chunkSize;
             int endX = (i == threadCount - 1) ? maxX : startX + chunkSize;
-            executor.execute(new RegionChecker(seed, startX, endX, minZ, maxZ, maxHeight, processedCount, resultCallback, checkGeneration, currentNeedCache));
+            executor.execute(new RegionChecker(seed, startX, endX, minZ, maxZ, maxHeight, processedCount, resultCallback, checkGeneration));
         }
         executor.shutdown();
 
@@ -208,7 +199,7 @@ public class SearchCoords {
             int startX = currentMinX + i * chunkSize;
             int endX = (i == newThreadCount - 1) ? currentMaxX : startX + chunkSize;
             executor.execute(new RegionChecker(currentSeed, startX, endX, currentMinZ, currentMaxZ, currentMaxHeight,
-                    currentProcessedCount, currentResultCallback, currentCheckGeneration, currentNeedCache));
+                    currentProcessedCount, currentResultCallback, currentCheckGeneration));
         }
         executor.shutdown();
 
@@ -251,9 +242,8 @@ public class SearchCoords {
         private final AtomicLong processedCount;
         private final Consumer<String> resultCallback;
         private final boolean checkGeneration;
-        private final boolean needCache;
 
-        public RegionChecker(long seed, int startX, int endX, int minZ, int maxZ, double maxHeight, AtomicLong processedCount, Consumer<String> resultCallback, boolean checkGeneration, boolean needCache) {
+        public RegionChecker(long seed, int startX, int endX, int minZ, int maxZ, double maxHeight, AtomicLong processedCount, Consumer<String> resultCallback, boolean checkGeneration) {
             this.seed = seed;
             this.startX = startX;
             this.endX = endX;
@@ -264,18 +254,10 @@ public class SearchCoords {
             this.processedCount = processedCount;
             this.resultCallback = resultCallback;
             this.checkGeneration = checkGeneration;
-            this.needCache = needCache;
         }
 
         @Override
         public void run() {
-            // 根据任务规模决定是否预先初始化线程本地缓存
-            // 注意：即使不预热，后续调用处也会按需创建并写入 ThreadLocal
-            if (needCache) {
-                NOISE_CACHE.set(new NoiseCache(seed, worldPresetMode));
-                CHEESE_CACHE.set(new CheeseNoiseCache(seed));
-                SEED_CHECKER.set(SeedCheckerFactory.create(seed, TargetState.NO_STRUCTURES, SeedCheckerDimension.OVERWORLD, worldPresetMode));
-            }
             // 将 maxHeight 转为 int，供 check(...) 使用
             int maxHeightInt = (int) maxHeight;
 
@@ -373,17 +355,13 @@ public class SearchCoords {
     }
 
     public static Integer findGeneratedHutFloorY(long seed, int hutX, int hutZ, WorldPresetMode worldPresetMode) {
-        SeedChecker checker = SeedCheckerFactory.create(seed, TargetState.STRUCTURES, SeedCheckerDimension.OVERWORLD, worldPresetMode);
-        try {
-            for (int y = -55; y <= 128; y++) {
-                if (checker.getBlock(hutX + 2, y, hutZ + 2) == Blocks.SPRUCE_PLANKS) {
-                    return y;
-                }
+        SeedChecker checker = getThreadResources(seed, worldPresetMode).getStructureChecker();
+        for (int y = -55; y <= 128; y++) {
+            if (checker.getBlock(hutX + 2, y, hutZ + 2) == Blocks.SPRUCE_PLANKS) {
+                return y;
             }
-            return null;
-        } finally {
-            checker.clearMemory();
         }
+        return null;
     }
 
     // 精确检查女巫小屋所在区域的地形高度(未生成结构时)
@@ -392,7 +370,7 @@ public class SearchCoords {
         ChunkRand rand = new ChunkRand();
         rand.setCarverSeed(structureSeed, x / 16, z / 16, mcVersion);
         float a = rand.nextFloat();
-        SeedChecker checker = SeedCheckerFactory.create(seed, TargetState.NO_STRUCTURES, SeedCheckerDimension.OVERWORLD, worldPresetMode);
+        SeedChecker checker = getThreadResources(seed, worldPresetMode).terrainChecker;
         int totalHeight = 0;
         if (a < 0.25F || (a >= 0.5F && a < 0.75F)) {
             for (int i = x; i < x + 7; i++) {
@@ -420,20 +398,11 @@ public class SearchCoords {
             }
         }
         int height = (int) Math.ceil(((double) totalHeight / 63) + 1);
-        checker.clearMemory();
         return new Result(x, z, height);
     }
 
     public boolean check(long seed, int x, int z, int maxHeight) {
-        NoiseCache cache;
-        if (currentNeedCache && NOISE_CACHE.get() != null && NOISE_CACHE.get().worldPresetMode == worldPresetMode) {
-            cache = NOISE_CACHE.get();
-        } else {
-            cache = new NoiseCache(seed, worldPresetMode);
-            if (currentNeedCache) {
-                NOISE_CACHE.set(cache);
-            }
-        }
+        WorldNoiseCache cache = getThreadResources(seed, worldPresetMode).noise;
         int climateX = x + 8;
         int climateZ = z + 8;
         int heightX = x + 3;
@@ -464,47 +433,85 @@ public class SearchCoords {
                 return false;
             }
         }
-        if (Entrance(seed, heightX, 50, heightZ, currentNeedCache, worldPresetMode) >= 0) {
+        if (Entrance(seed, heightX, 50, heightZ, worldPresetMode) >= 0) {
             return false;
         }
-        if (Entrance(seed, heightX, 60, heightZ, currentNeedCache, worldPresetMode) >= 0) {
+        if (Entrance(seed, heightX, 60, heightZ, worldPresetMode) >= 0) {
             return false;
         }
         // 检查maxHeight本身
-        if (Entrance2(seed, heightX, maxHeight, heightZ, currentNeedCache, worldPresetMode) >= 0 && Cheese(seed, heightX, maxHeight, heightZ, currentNeedCache) >= 0) {
+        if (Entrance2(seed, heightX, maxHeight, heightZ, worldPresetMode) >= 0 && Cheese(seed, heightX, maxHeight, heightZ, worldPresetMode) >= 0) {
             return false;
         }
         // 0以下使用Entrance2
         for (int y = 0; y >= -40; y -= 10) {
             if (maxHeight < y) {
-                if (Entrance2(seed, heightX, y, heightZ, currentNeedCache, worldPresetMode) >= 0 && Cheese(seed, heightX, y, heightZ, currentNeedCache) >= 0) {
+                if (Entrance2(seed, heightX, y, heightZ, worldPresetMode) >= 0 && Cheese(seed, heightX, y, heightZ, worldPresetMode) >= 0) {
                     return false;
                 }
             }
         }
         // 10-40使用Entrance（较复杂）
         for (int y = 10; y <= 40; y += 10) {
-            if (Entrance(seed, heightX, y, heightZ, currentNeedCache, worldPresetMode) >= 0 && Cheese(seed, heightX, y, heightZ, currentNeedCache) >= 0) {
+            if (Entrance(seed, heightX, y, heightZ, worldPresetMode) >= 0 && Cheese(seed, heightX, y, heightZ, worldPresetMode) >= 0) {
                 return false;
             }
         }
         if (!isSingleBiome && cache.continentalness.sample((double) climateX / 4, 0, (double) climateZ / 4) < -0.11) { // 检查大陆性
             return false;
         }
-        LazyDoublePerlinNoiseSampler aquiferNoise = LazyDoublePerlinNoiseSampler.createNoiseSampler(
-                new Xoroshiro128PlusPlusRandom(seed).createRandomDeriver(),
-                NoiseParameterKey.AQUIFER_FLUID_LEVEL_FLOODEDNESS
-        );
         for (int y = maxHeight; y <= 60; y += 10) {
-            if (aquiferNoise.sample(heightX, y * 0.67, heightZ) > 0.41) {
+            if (cache.aquiferFloodedness.sample(heightX, y * 0.67, heightZ) > 0.41) {
                 return false;
             }
         }
         return true;
     }
 
-    private static class NoiseCache {
+    private static ThreadSeedResources getThreadResources(long seed, WorldPresetMode worldPresetMode) {
+        ThreadSeedResources resources = THREAD_RESOURCES.get();
+        if (resources == null || resources.seed != seed || resources.worldPresetMode != worldPresetMode) {
+            if (resources != null) {
+                resources.clear();
+            }
+            resources = new ThreadSeedResources(seed, worldPresetMode);
+            THREAD_RESOURCES.set(resources);
+        }
+        return resources;
+    }
+
+    private static final class ThreadSeedResources {
+        final long seed;
         final WorldPresetMode worldPresetMode;
+        final WorldNoiseCache noise;
+        final SeedChecker terrainChecker;
+        private SeedChecker structureChecker;
+
+        ThreadSeedResources(long seed, WorldPresetMode worldPresetMode) {
+            this.seed = seed;
+            this.worldPresetMode = worldPresetMode;
+            this.noise = new WorldNoiseCache(seed, worldPresetMode);
+            this.terrainChecker = SeedCheckerFactory.create(
+                    seed, TargetState.NO_STRUCTURES, SeedCheckerDimension.OVERWORLD, worldPresetMode);
+        }
+
+        SeedChecker getStructureChecker() {
+            if (structureChecker == null) {
+                structureChecker = SeedCheckerFactory.create(
+                        seed, TargetState.STRUCTURES, SeedCheckerDimension.OVERWORLD, worldPresetMode);
+            }
+            return structureChecker;
+        }
+
+        void clear() {
+            terrainChecker.clearMemory();
+            if (structureChecker != null) {
+                structureChecker.clearMemory();
+            }
+        }
+    }
+
+    private static class WorldNoiseCache {
         final LazyDoublePerlinNoiseSampler caveEntrance;
         final LazyDoublePerlinNoiseSampler spaghettiRarity;
         final LazyDoublePerlinNoiseSampler spaghettiThickness;
@@ -516,9 +523,11 @@ public class SearchCoords {
         final LazyDoublePerlinNoiseSampler temperature;
         final LazyDoublePerlinNoiseSampler continentalness;
         final LazyDoublePerlinNoiseSampler ridge;
+        final LazyDoublePerlinNoiseSampler caveLayer;
+        final LazyDoublePerlinNoiseSampler caveCheese;
+        final LazyDoublePerlinNoiseSampler aquiferFloodedness;
 
-        NoiseCache(long worldSeed, WorldPresetMode worldPresetMode) {
-            this.worldPresetMode = worldPresetMode;
+        WorldNoiseCache(long worldSeed, WorldPresetMode worldPresetMode) {
             Xoroshiro128PlusPlusRandom random = new Xoroshiro128PlusPlusRandom(worldSeed);
             var deriver = random.createRandomDeriver();
             caveEntrance = LazyDoublePerlinNoiseSampler.createNoiseSampler(deriver, NoiseParameterKey.CAVE_ENTRANCE);
@@ -535,31 +544,20 @@ public class SearchCoords {
             temperature = LazyDoublePerlinNoiseSampler.createNoiseSampler(deriver, temperatureKey);
             continentalness = LazyDoublePerlinNoiseSampler.createNoiseSampler(deriver, continentalnessKey);
             ridge = LazyDoublePerlinNoiseSampler.createNoiseSampler(deriver, NoiseParameterKey.RIDGE);
+
+            Xoroshiro128PlusPlusRandom cheeseRandom = new Xoroshiro128PlusPlusRandom(worldSeed);
+            var cheeseDeriver = cheeseRandom.createRandomDeriver();
+            caveLayer = LazyDoublePerlinNoiseSampler.createNoiseSampler(cheeseDeriver, NoiseParameterKey.CAVE_LAYER);
+            caveCheese = LazyDoublePerlinNoiseSampler.createNoiseSampler(cheeseDeriver, NoiseParameterKey.CAVE_CHEESE);
+
+            aquiferFloodedness = LazyDoublePerlinNoiseSampler.createNoiseSampler(
+                    new Xoroshiro128PlusPlusRandom(worldSeed).createRandomDeriver(),
+                    NoiseParameterKey.AQUIFER_FLUID_LEVEL_FLOODEDNESS);
         }
     }
 
-    private static class CheeseNoiseCache {
-        final LazyDoublePerlinNoiseSampler caveLayer;
-        final LazyDoublePerlinNoiseSampler caveCheese;
-
-        CheeseNoiseCache(long worldSeed) {
-            Xoroshiro128PlusPlusRandom random = new Xoroshiro128PlusPlusRandom(worldSeed);
-            var deriver = random.createRandomDeriver();
-            caveLayer = LazyDoublePerlinNoiseSampler.createNoiseSampler(deriver, NoiseParameterKey.CAVE_LAYER);
-            caveCheese = LazyDoublePerlinNoiseSampler.createNoiseSampler(deriver, NoiseParameterKey.CAVE_CHEESE);
-        }
-    }
-
-    public static double Entrance(long worldSeed, int x, int y, int z, boolean needCache, WorldPresetMode worldPresetMode) {
-        NoiseCache cache;
-        if (needCache && NOISE_CACHE.get() != null) {
-            cache = NOISE_CACHE.get();
-        } else {
-            cache = new NoiseCache(worldSeed, worldPresetMode);
-            if (needCache) {
-                NOISE_CACHE.set(cache);
-            }
-        }
+    public static double Entrance(long worldSeed, int x, int y, int z, WorldPresetMode worldPresetMode) {
+        WorldNoiseCache cache = getThreadResources(worldSeed, worldPresetMode).noise;
         double c = cache.caveEntrance.sample(x * 0.75, y * 0.5, z * 0.75) + 0.37 +
                 MathHelper.clampedLerp(0.3, 0.0, (10 + (double) y) / 40.0);
         double d = cache.spaghettiRarity.sample(x * 2, y, z * 2);
@@ -575,31 +573,15 @@ public class SearchCoords {
         return Math.min(c, p + q);
     }
 
-    public static double Cheese(long worldSeed, int x, int y, int z, boolean needCache) {
-        CheeseNoiseCache cache;
-        if (needCache && CHEESE_CACHE.get() != null) {
-            cache = CHEESE_CACHE.get();
-        } else {
-            cache = new CheeseNoiseCache(worldSeed);
-            if (needCache) {
-                CHEESE_CACHE.set(cache);
-            }
-        }
+    public static double Cheese(long worldSeed, int x, int y, int z, WorldPresetMode worldPresetMode) {
+        WorldNoiseCache cache = getThreadResources(worldSeed, worldPresetMode).noise;
         double a = 4 * cache.caveLayer.sample(x, y * 8, z) * cache.caveLayer.sample(x, y * 8, z);
         double b = MathHelper.clamp((0.27 + cache.caveCheese.sample(x, y * 0.6666666666666666, z)), -1, 1);
         return a + b;//Actually there still need to add a function about sloped_cheese, but sloped_cheese is too complex and IDK how to calculate it.
     }
 
-    public static double Entrance2(long worldSeed, int x, int y, int z, boolean needCache, WorldPresetMode worldPresetMode) {
-        NoiseCache cache;
-        if (needCache && NOISE_CACHE.get() != null) {
-            cache = NOISE_CACHE.get();
-        } else {
-            cache = new NoiseCache(worldSeed, worldPresetMode);
-            if (needCache) {
-                NOISE_CACHE.set(cache);
-            }
-        }
+    public static double Entrance2(long worldSeed, int x, int y, int z, WorldPresetMode worldPresetMode) {
+        WorldNoiseCache cache = getThreadResources(worldSeed, worldPresetMode).noise;
         double d = cache.spaghettiRarity.sample(x * 2, y, z * 2);
         double e = NoiseColumnSampler.CaveScaler.scaleTunnels(d);
         double h = Util.lerpFromProgress(cache.spaghettiThickness, x, y, z, 0.065, 0.088);

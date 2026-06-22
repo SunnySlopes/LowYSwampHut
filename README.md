@@ -4,7 +4,7 @@ A GUI program for searching low Y-coordinate Swamp Huts in Minecraft Java Editio
 
 # 低y女巫小屋搜索工具
 
-一个用于搜索 Minecraft Java 版低 Y 坐标女巫小屋的 GUI 程序。本程序支持 1.18.2、1.19.2、1.20.1 和 1.21.1 版本。
+一个用于搜索 Minecraft Java 版低 Y 坐标女巫小屋的 GUI 程序。本程序支持 1.18-26.2 版本。
 
 ## How to Run / 如何运行
 

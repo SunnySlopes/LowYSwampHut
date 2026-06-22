@@ -1459,8 +1459,6 @@ public class LowYSwampHutForFixedSeed extends JFrame {
             }
         }
     }
-
-
     private String formatTime(long milliseconds) {
         long totalSeconds = milliseconds / 1000;
         long days = totalSeconds / 86400;
@@ -1469,7 +1467,6 @@ public class LowYSwampHutForFixedSeed extends JFrame {
         long seconds = totalSeconds % 60;
         return getString("time.format", days, hours, minutes, seconds);
     }
-
     /**
      * 设置窗口图标
      * 图标文件应放在 src/main/resources/icon.png 或 icon.ico
@@ -1675,8 +1672,6 @@ public class LowYSwampHutForFixedSeed extends JFrame {
             System.err.println("加载语言资源失败: " + e.getMessage());
             return;
         }
-
-
         // 更新所有UI文本
         updateUITexts();
     }
@@ -1790,7 +1785,6 @@ public class LowYSwampHutForFixedSeed extends JFrame {
             searchRemainingTimeLabel.setText(getString("remainingTime.calculating"));
         }
     }
-
     /**
      * 更新列表搜索面板的文本
      */
@@ -2833,7 +2827,6 @@ public class LowYSwampHutForFixedSeed extends JFrame {
     public static void main(String[] args) {
         // 注意：系统属性应该在 Launcher 中设置
         // 这里只保留必要的初始化逻辑
-
         // 在主线程中预先初始化 SeedCheckerSettings，避免在多线程环境中初始化
         // 使用 try-catch 来捕获可能的初始化错误，但继续执行程序
         try {
@@ -2843,7 +2836,6 @@ public class LowYSwampHutForFixedSeed extends JFrame {
             System.err.println("Warning: SeedChecker initialization failed, but continuing...");
             System.err.println("You may need to run the JAR with: java -Dlog4j2.callerClass=project.Launcher -Dlog4j2.enable.threadlocals=false -jar ...");
         }
-
         SwingUtilities.invokeLater(() -> {
             try {
                 UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
